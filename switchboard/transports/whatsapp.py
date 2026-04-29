@@ -32,16 +32,16 @@ async def send(recipient: str, message: str) -> None:
 
 
 async def send_file(recipient: str, file_bytes: bytes, filename: str, content_type: str, caption: str = "") -> None:
-    b64 = base64.b64encode(file_bytes).decode()
+    data_uri = f"data:{content_type};base64,{base64.b64encode(file_bytes).decode()}"
     phone = _phone_field(recipient)
     if content_type.startswith("image/"):
-        endpoint, payload = "/chat/send/image", {"Phone": phone, "Image": b64, "Caption": caption}
+        endpoint, payload = "/chat/send/image", {"Phone": phone, "Image": data_uri, "Caption": caption}
     elif content_type.startswith("audio/"):
-        endpoint, payload = "/chat/send/audio", {"Phone": phone, "Audio": b64}
+        endpoint, payload = "/chat/send/audio", {"Phone": phone, "Audio": data_uri}
     elif content_type.startswith("video/"):
-        endpoint, payload = "/chat/send/video", {"Phone": phone, "Video": b64, "Caption": caption}
+        endpoint, payload = "/chat/send/video", {"Phone": phone, "Video": data_uri, "Caption": caption}
     else:
-        endpoint, payload = "/chat/send/document", {"Phone": phone, "Document": b64, "FileName": filename, "Caption": caption}
+        endpoint, payload = "/chat/send/document", {"Phone": phone, "Document": data_uri, "FileName": filename, "Caption": caption}
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"http://{config.WUZAPI_URL}{endpoint}",
