@@ -25,10 +25,10 @@ async def send(recipient: str, message: str) -> None:
 async def send_file(recipient: str, file_bytes: bytes, filename: str, content_type: str, caption: str = "") -> None:
     b64 = base64.b64encode(file_bytes).decode()
     payload: dict = {
-        "message": caption or " ",  # signal-cli rejects empty message even with attachments
+        "message": caption or " ",  # signal-cli rejects requests with no message even when attachment is present
         "number": config.SIGNAL_PHONE_NUMBER,
         "recipients": [recipient],
-        "attachments": [{"filename": filename, "base64_attachment": b64}],
+        "base64_attachments": [f"data:{content_type};filename={filename};base64,{b64}"],
     }
     async with httpx.AsyncClient() as client:
         resp = await client.post(
