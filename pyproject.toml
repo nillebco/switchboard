@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "switchboard"
+version = "0.1.0"
+description = "Multi-transport messaging hub with Redis queue"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "redis[hiredis]>=5.0",
+    "pyTelegramBotAPI>=4.14",
+    "signalbot>=0.2",
+    "websockets>=12",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["switchboard*"]

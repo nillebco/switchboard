@@ -1,0 +1,52 @@
+services:
+  switchboard:
+    build: .
+    ports:
+      - "8018:8018"
+    env_file: .env
+    depends_on:
+      - redis
+      - signal-cli
+      - wuzapi
+    restart: unless-stopped
+    networks:
+      - switchboard
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    networks:
+      - switchboard
+
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api
+    environment:
+      MODE: json-rpc
+    ports:
+      - "8080:8080"
+    volumes:
+      - signal-cli-config:/home/.local/share/signal-cli
+    restart: unless-stopped
+    networks:
+      - switchboard
+
+  wuzapi:
+    image: asternic/wuzapi:latest
+    ports:
+      - "3000:8080"
+    volumes:
+      - wuzapi-data:/app/dbdata
+    environment:
+      WUZAPI_ADMIN_TOKEN: ${WUZAPI_ADMIN_TOKEN}
+      WUZAPI_GLOBAL_ENCRYPTION_KEY: ${WUZAPI_GLOBAL_ENCRYPTION_KEY}
+      WUZAPI_GLOBAL_HMAC_KEY: ${WUZAPI_GLOBAL_HMAC_KEY}
+    restart: unless-stopped
+    networks:
+      - switchboard
+
+networks:
+  switchboard:
+
+volumes:
+  signal-cli-config:
+  wuzapi-data:
