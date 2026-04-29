@@ -41,3 +41,10 @@ async def list_groups(transport: Literal["signal", "whatsapp"] = "signal"):
     if transport == "whatsapp":
         return await whatsapp.list_groups()
     return await signal.list_groups()
+
+
+@router.get("/contacts", dependencies=[Depends(_require_api_key)])
+async def list_contacts(transport: Literal["signal", "whatsapp"] = "signal"):
+    if transport == "whatsapp":
+        return await whatsapp.list_contacts()
+    return await signal.list_contacts()

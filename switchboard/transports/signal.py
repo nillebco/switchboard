@@ -33,6 +33,24 @@ async def list_groups() -> list[dict]:
     ]
 
 
+async def list_contacts() -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"http://{config.SIGNAL_CLI_URL}/v1/contacts/{config.SIGNAL_PHONE_NUMBER}",
+            timeout=10,
+        )
+        resp.raise_for_status()
+    return [
+        {
+            "number": c.get("number"),
+            "name": c.get("name") or (c.get("profile") or {}).get("given_name") or c.get("profile_name") or "",
+            "username": c.get("username") or "",
+        }
+        for c in resp.json()
+        if c.get("number")
+    ]
+
+
 async def start_signal_consumer(queue: MessageQueue) -> None:
     if not config.SIGNAL_PHONE_NUMBER:
         logger.warning("SIGNAL_PHONE_NUMBER not set — Signal consumer disabled")

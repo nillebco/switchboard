@@ -30,6 +30,25 @@ async def send(recipient: str, message: str) -> None:
         resp.raise_for_status()
 
 
+async def list_contacts() -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"http://{config.WUZAPI_URL}/user/contacts",
+            headers=_headers(),
+            timeout=10,
+        )
+        resp.raise_for_status()
+    contacts = resp.json().get("data", {})
+    return [
+        {
+            "id": jid,
+            "name": info.get("FullName") or info.get("PushName") or info.get("BusinessName") or "",
+        }
+        for jid, info in contacts.items()
+        if info.get("Found")
+    ]
+
+
 async def list_groups() -> list[dict]:
     async with httpx.AsyncClient() as client:
         resp = await client.get(
