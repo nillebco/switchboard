@@ -28,7 +28,7 @@ async def send_file(recipient: str, file_bytes: bytes, filename: str, content_ty
         "message": caption or " ",  # signal-cli rejects empty message even with attachments
         "number": config.SIGNAL_PHONE_NUMBER,
         "recipients": [recipient],
-        "attachments": [b64],
+        "attachments": [{"filename": filename, "base64_attachment": b64}],
     }
     async with httpx.AsyncClient() as client:
         resp = await client.post(
