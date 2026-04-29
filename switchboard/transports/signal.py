@@ -62,4 +62,4 @@ async def start_signal_consumer(queue: MessageQueue) -> None:
         {"signal_service": config.SIGNAL_CLI_URL, "phone_number": config.SIGNAL_PHONE_NUMBER}
     )
     bot.register(_QueueCommand())
-    await bot._produce_consume_messages()
+    await bot._async_post_init()
