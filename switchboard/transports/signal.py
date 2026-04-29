@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import time
@@ -17,6 +18,22 @@ async def send(recipient: str, message: str) -> None:
             f"http://{config.SIGNAL_CLI_URL}/v2/send",
             json={"message": message, "number": config.SIGNAL_PHONE_NUMBER, "recipients": [recipient]},
             timeout=15,
+        )
+        resp.raise_for_status()
+
+
+async def send_file(recipient: str, file_bytes: bytes, filename: str, content_type: str, caption: str = "") -> None:
+    b64 = base64.b64encode(file_bytes).decode()
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"http://{config.SIGNAL_CLI_URL}/v2/send",
+            json={
+                "message": caption,
+                "number": config.SIGNAL_PHONE_NUMBER,
+                "recipients": [recipient],
+                "attachments": [b64],
+            },
+            timeout=60,
         )
         resp.raise_for_status()
 

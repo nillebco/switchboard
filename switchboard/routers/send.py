@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 
@@ -34,6 +34,25 @@ async def send(
     else:
         await signal.send(body.recipient, body.message)
     return {"status": "ok", "recipient": body.recipient, "transport": transport}
+
+
+@router.post("/file", dependencies=[Depends(_require_api_key)])
+async def send_file(
+    transport: Literal["signal", "telegram", "whatsapp"] = "signal",
+    recipient: str = Form(...),
+    caption: str = Form(""),
+    file: UploadFile = File(...),
+):
+    file_bytes = await file.read()
+    filename = file.filename or "file"
+    content_type = file.content_type or "application/octet-stream"
+    if transport == "telegram":
+        await telegram.send_file(recipient, file_bytes, filename, content_type, caption)
+    elif transport == "whatsapp":
+        await whatsapp.send_file(recipient, file_bytes, filename, content_type, caption)
+    else:
+        await signal.send_file(recipient, file_bytes, filename, content_type, caption)
+    return {"status": "ok", "recipient": recipient, "transport": transport, "filename": filename}
 
 
 @router.get("/groups", dependencies=[Depends(_require_api_key)])

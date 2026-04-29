@@ -15,6 +15,7 @@ dependencies = [
     "pyTelegramBotAPI>=4.14",
     "signalbot>=0.2",
     "websockets>=12",
+    "python-multipart>=0.0.9",
 ]
 
 [tool.setuptools.packages.find]

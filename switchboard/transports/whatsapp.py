@@ -1,3 +1,4 @@
+import base64
 import logging
 import time
 
@@ -26,6 +27,27 @@ async def send(recipient: str, message: str) -> None:
             headers=_headers(),
             json={"Phone": _phone_field(recipient), "Body": message},
             timeout=15,
+        )
+        resp.raise_for_status()
+
+
+async def send_file(recipient: str, file_bytes: bytes, filename: str, content_type: str, caption: str = "") -> None:
+    b64 = base64.b64encode(file_bytes).decode()
+    phone = _phone_field(recipient)
+    if content_type.startswith("image/"):
+        endpoint, payload = "/chat/send/image", {"Phone": phone, "Image": b64, "Caption": caption}
+    elif content_type.startswith("audio/"):
+        endpoint, payload = "/chat/send/audio", {"Phone": phone, "Audio": b64}
+    elif content_type.startswith("video/"):
+        endpoint, payload = "/chat/send/video", {"Phone": phone, "Video": b64, "Caption": caption}
+    else:
+        endpoint, payload = "/chat/send/document", {"Phone": phone, "Document": b64, "FileName": filename, "Caption": caption}
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"http://{config.WUZAPI_URL}{endpoint}",
+            headers=_headers(),
+            json=payload,
+            timeout=60,
         )
         resp.raise_for_status()
 
