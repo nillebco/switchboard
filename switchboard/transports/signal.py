@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -51,30 +52,74 @@ async def list_contacts() -> list[dict]:
     ]
 
 
+async def _load_contacts() -> dict[str, str]:
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"http://{config.SIGNAL_CLI_URL}/v1/contacts/{config.SIGNAL_PHONE_NUMBER}",
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return {}
+        return {
+            c["number"]: (
+                c.get("name") or (c.get("profile") or {}).get("given_name") or c.get("profile_name") or ""
+            )
+            for c in resp.json()
+            if c.get("number")
+        }
+    except Exception:
+        logger.warning("Could not load Signal contacts cache", exc_info=True)
+        return {}
+
+
 async def start_signal_consumer(queue: MessageQueue) -> None:
     if not config.SIGNAL_PHONE_NUMBER:
         logger.warning("SIGNAL_PHONE_NUMBER not set — Signal consumer disabled")
         return
 
+    contacts: dict[str, str] = await _load_contacts()
+
     class _QueueCommand(Command):
         async def handle(self, c: Context):
             msg = c.message
-            source = getattr(msg, "source", None) or getattr(msg, "sender", None)
-            group_id = getattr(msg, "group", None)
-            text = getattr(msg, "text", None)
-            message_id = getattr(msg, "timestamp", str(int(time.time())))
+            internal_group_id = msg.group
+            text = msg.text
+            message_id = str(msg.timestamp)
 
-            incoming = IncomingMessage(
+            sender = msg.source_number or msg.source or ""
+            sender_name = contacts.get(sender, "")
+
+            # Resolve internal group UUID → REST-API group ID + name
+            group_id: str | None = None
+            group_name = ""
+            if internal_group_id:
+                group_data = getattr(c.bot, "_groups_by_internal_id", {}).get(internal_group_id)
+                if group_data:
+                    group_id = group_data.get("id")        # group.XXX= format, usable by /send
+                    group_name = group_data.get("name", "")
+                else:
+                    group_id = internal_group_id            # fallback: pass through as-is
+
+            raw = {}
+            if msg.raw_message:
+                try:
+                    raw = json.loads(msg.raw_message)
+                except Exception:
+                    pass
+
+            await queue.publish(IncomingMessage(
                 transport="signal",
-                sender=str(source or ""),
+                sender=sender,
+                sender_name=sender_name,
                 recipient=config.SIGNAL_PHONE_NUMBER,
                 text=text,
-                message_id=str(message_id),
-                timestamp=int(time.time()),
+                message_id=message_id,
+                timestamp=msg.timestamp // 1000,
                 group_id=group_id,
-                raw={},
-            )
-            await queue.publish(incoming)
+                group_name=group_name,
+                raw=raw,
+            ))
 
     bot = SignalBot(
         {"signal_service": config.SIGNAL_CLI_URL, "phone_number": config.SIGNAL_PHONE_NUMBER}
