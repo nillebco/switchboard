@@ -127,10 +127,9 @@ The API is available at `http://localhost:8018`.
 
 ### WhatsApp webhook
 
-Point wuzapi's webhook URL at:
-```
-http://<switchboard-host>:8018/api/v1/webhooks/whatsapp
-```
+Switchboard self-registers its webhook with wuzapi on startup. The default URL
+(`http://switchboard:8018/api/v1/webhooks/whatsapp`) works inside the bundled
+docker-compose network. Override `WUZAPI_WEBHOOK_URL` if wuzapi runs elsewhere.
 
 ### Signal & Telegram
 

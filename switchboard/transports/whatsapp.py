@@ -52,6 +52,32 @@ async def send_file(recipient: str, file_bytes: bytes, filename: str, content_ty
         resp.raise_for_status()
 
 
+async def ensure_webhook() -> None:
+    if not config.WUZAPI_TOKEN or not config.WUZAPI_WEBHOOK_URL:
+        return
+    async with httpx.AsyncClient() as client:
+        try:
+            current = await client.get(
+                f"http://{config.WUZAPI_URL}/webhook",
+                headers=_headers(),
+                timeout=5,
+            )
+            current.raise_for_status()
+            data = current.json().get("data", {}) or {}
+            if data.get("webhook") == config.WUZAPI_WEBHOOK_URL and "Message" in (data.get("subscribe") or []):
+                return
+            resp = await client.post(
+                f"http://{config.WUZAPI_URL}/webhook",
+                headers=_headers(),
+                json={"WebhookURL": config.WUZAPI_WEBHOOK_URL, "Events": ["Message"]},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            logger.info("wuzapi webhook registered: %s", config.WUZAPI_WEBHOOK_URL)
+        except Exception:
+            logger.warning("Failed to register wuzapi webhook", exc_info=True)
+
+
 async def list_contacts() -> list[dict]:
     async with httpx.AsyncClient() as client:
         resp = await client.get(

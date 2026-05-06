@@ -7,6 +7,9 @@ TELEGRAM_TOKEN: str = os.environ.get("TELEGRAM_TOKEN", "")
 
 WUZAPI_URL: str = os.environ.get("WUZAPI_URL", "localhost:8080")
 WUZAPI_TOKEN: str = os.environ.get("WUZAPI_TOKEN", "")
+WUZAPI_WEBHOOK_URL: str = os.environ.get(
+    "WUZAPI_WEBHOOK_URL", "http://switchboard:8018/api/v1/webhooks/whatsapp"
+)
 
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379")
 

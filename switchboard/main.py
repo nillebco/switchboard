@@ -10,6 +10,7 @@ from .routers.send import router as send_router
 from .routers.webhooks import router as webhooks_router
 from .transports.signal import start_signal_consumer
 from .transports.telegram import start_telegram_consumer
+from .transports.whatsapp import ensure_webhook as ensure_whatsapp_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ async def startup():
 
     app.state.queue = queue
 
+    asyncio.create_task(_run(ensure_whatsapp_webhook(), "whatsapp-webhook-register"))
     asyncio.create_task(_run(start_signal_consumer(queue), "signal-consumer"))
     asyncio.create_task(_run(start_telegram_consumer(queue), "telegram-consumer"))
 
