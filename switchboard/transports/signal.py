@@ -1,7 +1,10 @@
 import base64
+from collections.abc import Awaitable, Callable
 import json
 import logging
+import tempfile
 import time
+import uuid
 
 import httpx
 from signalbot import Command, Context, SignalBot  # type: ignore
@@ -10,6 +13,8 @@ from .. import config
 from ..queue import IncomingMessage, MessageQueue
 
 logger = logging.getLogger(__name__)
+
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 async def send(recipient: str, message: str) -> None:
@@ -37,6 +42,73 @@ async def send_file(recipient: str, file_bytes: bytes, filename: str, content_ty
             timeout=60,
         )
         resp.raise_for_status()
+
+
+async def send_file_from_reader(
+    recipient: str,
+    read: Callable[[int], Awaitable[bytes]],
+    filename: str,
+    content_type: str,
+    caption: str = "",
+) -> None:
+    with tempfile.TemporaryFile() as encoded_file:
+        b64_size = await _write_base64_encoded(read, encoded_file)
+        encoded_file.seek(0)
+
+        marker = f"__SWITCHBOARD_ATTACHMENT_BASE64_{uuid.uuid4().hex}__"
+        payload = {
+            "message": caption or " ",  # signal-cli rejects requests with no message even when attachment is present
+            "number": config.SIGNAL_PHONE_NUMBER,
+            "recipients": [recipient],
+            "base64_attachments": [f"data:{content_type};filename={filename};base64,{marker}"],
+        }
+        prefix, suffix = json.dumps(payload).split(marker)
+        prefix_bytes = prefix.encode()
+        suffix_bytes = suffix.encode()
+
+        async def body_chunks():
+            yield prefix_bytes
+            while chunk := encoded_file.read(_UPLOAD_CHUNK_SIZE):
+                yield chunk
+            yield suffix_bytes
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"http://{config.SIGNAL_CLI_URL}/v2/send",
+                content=body_chunks(),
+                headers={
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(prefix_bytes) + b64_size + len(suffix_bytes)),
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+
+
+async def _write_base64_encoded(read: Callable[[int], Awaitable[bytes]], encoded_file) -> int:
+    pending = b""
+    total = 0
+
+    while chunk := await read(_UPLOAD_CHUNK_SIZE):
+        chunk = pending + chunk
+        remainder = len(chunk) % 3
+        if remainder:
+            pending = chunk[-remainder:]
+            chunk = chunk[:-remainder]
+        else:
+            pending = b""
+
+        if chunk:
+            encoded = base64.b64encode(chunk)
+            encoded_file.write(encoded)
+            total += len(encoded)
+
+    if pending:
+        encoded = base64.b64encode(pending)
+        encoded_file.write(encoded)
+        total += len(encoded)
+
+    return total
 
 
 async def list_groups() -> list[dict]:
@@ -142,5 +214,22 @@ async def start_signal_consumer(queue: MessageQueue) -> None:
     bot = SignalBot(
         {"signal_service": config.SIGNAL_CLI_URL, "phone_number": config.SIGNAL_PHONE_NUMBER}
     )
+    bot._detect_groups = _safe_detect_groups(bot)  # type: ignore[method-assign]
     bot.register(_QueueCommand())
     await bot._async_post_init()
+
+
+def _safe_detect_groups(bot):
+    original_detect_groups = bot._detect_groups
+
+    async def detect_groups() -> None:
+        try:
+            await original_detect_groups()
+        except Exception:
+            bot.groups = []
+            bot._groups_by_id = {}
+            bot._groups_by_internal_id = {}
+            bot._groups_by_name = {}
+            logger.warning("Signal group detection failed; continuing without group cache", exc_info=True)
+
+    return detect_groups

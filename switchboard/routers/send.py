@@ -43,15 +43,16 @@ async def send_file(
     caption: str = Form(""),
     file: UploadFile = File(...),
 ):
-    file_bytes = await file.read()
     filename = file.filename or "file"
     content_type = file.content_type or "application/octet-stream"
-    if transport == "telegram":
+    if transport == "signal":
+        await signal.send_file_from_reader(recipient, file.read, filename, content_type, caption)
+    elif transport == "telegram":
+        file_bytes = await file.read()
         await telegram.send_file(recipient, file_bytes, filename, content_type, caption)
     elif transport == "whatsapp":
+        file_bytes = await file.read()
         await whatsapp.send_file(recipient, file_bytes, filename, content_type, caption)
-    else:
-        await signal.send_file(recipient, file_bytes, filename, content_type, caption)
     return {"status": "ok", "recipient": recipient, "transport": transport, "filename": filename}
 
 
