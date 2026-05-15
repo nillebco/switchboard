@@ -1,20 +1,12 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.security import APIKeyHeader
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel
 
-from .. import config
+from .auth import require_api_key
 from ..transports import signal, telegram, whatsapp
 
 router = APIRouter(prefix="/send")
-
-_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-async def _require_api_key(api_key: str = Depends(_api_key_header)):
-    if not config.API_KEY or api_key != config.API_KEY:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
 
 class SendRequest(BaseModel):
@@ -22,7 +14,7 @@ class SendRequest(BaseModel):
     message: str
 
 
-@router.post("", dependencies=[Depends(_require_api_key)])
+@router.post("", dependencies=[Depends(require_api_key)])
 async def send(
     body: SendRequest,
     transport: Literal["signal", "telegram", "whatsapp"] = "signal",
@@ -36,7 +28,7 @@ async def send(
     return {"status": "ok", "recipient": body.recipient, "transport": transport}
 
 
-@router.post("/file", dependencies=[Depends(_require_api_key)])
+@router.post("/file", dependencies=[Depends(require_api_key)])
 async def send_file(
     transport: Literal["signal", "telegram", "whatsapp"] = "signal",
     recipient: str = Form(...),
@@ -56,14 +48,14 @@ async def send_file(
     return {"status": "ok", "recipient": recipient, "transport": transport, "filename": filename}
 
 
-@router.get("/groups", dependencies=[Depends(_require_api_key)])
+@router.get("/groups", dependencies=[Depends(require_api_key)])
 async def list_groups(transport: Literal["signal", "whatsapp"] = "signal"):
     if transport == "whatsapp":
         return await whatsapp.list_groups()
     return await signal.list_groups()
 
 
-@router.get("/contacts", dependencies=[Depends(_require_api_key)])
+@router.get("/contacts", dependencies=[Depends(require_api_key)])
 async def list_contacts(transport: Literal["signal", "whatsapp"] = "signal"):
     if transport == "whatsapp":
         return await whatsapp.list_contacts()

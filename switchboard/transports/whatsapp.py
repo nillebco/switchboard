@@ -1,6 +1,9 @@
 import base64
+from dataclasses import dataclass
+from datetime import datetime
 import logging
 import time
+from typing import Any
 
 import httpx
 
@@ -8,6 +11,31 @@ from .. import config
 from ..queue import IncomingMessage
 
 logger = logging.getLogger(__name__)
+
+_MEDIA_MESSAGE_TYPES = {
+    "audioMessage": ("audio", "/chat/downloadaudio"),
+    "documentMessage": ("document", "/chat/downloaddocument"),
+    "imageMessage": ("image", "/chat/downloadimage"),
+    "stickerMessage": ("sticker", "/chat/downloadsticker"),
+    "videoMessage": ("video", "/chat/downloadvideo"),
+}
+
+
+@dataclass(frozen=True)
+class Attachment:
+    index: int
+    kind: str
+    content_type: str
+    filename: str
+    size: int | None
+    duration_seconds: int | None = None
+
+
+@dataclass(frozen=True)
+class DownloadedAttachment:
+    content: bytes
+    content_type: str
+    filename: str
 
 
 def _headers() -> dict:
@@ -18,6 +46,113 @@ def _phone_field(recipient: str) -> str:
     if recipient.endswith("@g.us"):
         return recipient
     return recipient.split("@")[0].split(":")[0].lstrip("+")
+
+
+def list_attachments(raw: dict[str, Any]) -> list[Attachment]:
+    event = _event_from_raw(raw)
+    info = event.get("Info", {})
+    message = event.get("Message", {})
+    attachments: list[Attachment] = []
+
+    for key, (kind, _endpoint) in _MEDIA_MESSAGE_TYPES.items():
+        media = message.get(key)
+        if not isinstance(media, dict):
+            continue
+        content_type = media.get("mimetype") or "application/octet-stream"
+        filename = (
+            media.get("fileName")
+            or media.get("filename")
+            or _default_filename(info.get("ID", "attachment"), kind, content_type)
+        )
+        attachments.append(
+            Attachment(
+                index=len(attachments),
+                kind=kind,
+                content_type=content_type,
+                filename=filename,
+                size=media.get("fileLength"),
+                duration_seconds=media.get("seconds"),
+            )
+        )
+
+    return attachments
+
+
+async def download_attachment(raw: dict[str, Any], index: int) -> DownloadedAttachment:
+    event = _event_from_raw(raw)
+    info = event.get("Info", {})
+    message = event.get("Message", {})
+    current_index = 0
+
+    for key, (kind, endpoint) in _MEDIA_MESSAGE_TYPES.items():
+        media = message.get(key)
+        if not isinstance(media, dict):
+            continue
+        if current_index != index:
+            current_index += 1
+            continue
+
+        payload = _download_payload(media)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"http://{config.WUZAPI_URL}{endpoint}",
+                headers=_headers(),
+                json=payload,
+                timeout=60,
+            )
+            resp.raise_for_status()
+
+        data = resp.json().get("data", {})
+        content_type = data.get("Mimetype") or media.get("mimetype") or "application/octet-stream"
+        data_url = data.get("Data")
+        if not isinstance(data_url, str) or "," not in data_url:
+            raise ValueError("Wuzapi response did not include attachment data")
+
+        filename = (
+            media.get("fileName")
+            or media.get("filename")
+            or _default_filename(info.get("ID", "attachment"), kind, content_type)
+        )
+        return DownloadedAttachment(
+            content=base64.b64decode(data_url.split(",", 1)[1]),
+            content_type=content_type,
+            filename=filename,
+        )
+
+    raise IndexError("attachment not found")
+
+
+def _event_from_raw(raw: dict[str, Any]) -> dict[str, Any]:
+    json_data = raw.get("jsonData", {})
+    if isinstance(json_data, str):
+        import json
+
+        json_data = json.loads(json_data)
+    return json_data.get("event", {}) if isinstance(json_data, dict) else {}
+
+
+def _download_payload(media: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "Url": media.get("URL", ""),
+        "DirectPath": media.get("directPath", ""),
+        "MediaKey": media.get("mediaKey", ""),
+        "Mimetype": media.get("mimetype", "application/octet-stream"),
+        "FileEncSHA256": media.get("fileEncSHA256", ""),
+        "FileSHA256": media.get("fileSHA256", ""),
+        "FileLength": media.get("fileLength", 0),
+    }
+
+
+def _default_filename(message_id: str, kind: str, content_type: str) -> str:
+    extension = {
+        "audio/ogg": "ogg",
+        "audio/mpeg": "mp3",
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "video/mp4": "mp4",
+    }.get(content_type.split(";", 1)[0], "bin")
+    return f"{message_id or 'attachment'}-{kind}.{extension}"
 
 
 async def send(recipient: str, message: str) -> None:
@@ -154,7 +289,18 @@ def normalize_webhook(body: dict) -> IncomingMessage | None:
         recipient=config.WUZAPI_TOKEN,
         text=text,
         message_id=info.get("ID", str(int(time.time()))),
-        timestamp=info.get("Timestamp", int(time.time())),
+        timestamp=_parse_timestamp(info.get("Timestamp")),
         group_id=group_id,
         raw=body,
     )
+
+
+def _parse_timestamp(value) -> int:
+    if not value:
+        return int(time.time())
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except ValueError:
+        return int(datetime.fromisoformat(value).timestamp())

@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Callable, Protocol, runtime_checkable
 
 
@@ -39,7 +40,7 @@ class IncomingMessage:
             recipient=fields[b"recipient"].decode(),
             text=fields[b"text"].decode() or None,
             message_id=fields[b"message_id"].decode(),
-            timestamp=int(fields[b"timestamp"].decode()),
+            timestamp=_parse_timestamp(fields[b"timestamp"].decode()),
             group_id=fields[b"group_id"].decode() or None,
             group_name=fields[b"group_name"].decode(),
             raw=json.loads(fields[b"raw"].decode()),
@@ -58,3 +59,10 @@ class NullQueue:
 
     async def subscribe(self, group: str, consumer: str, handler: Callable[[IncomingMessage], Any]) -> None:
         pass
+
+
+def _parse_timestamp(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        return int(datetime.fromisoformat(value).timestamp())

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from . import config
 from .queue import MessageQueue, NullQueue
+from .routers.messages import router as messages_router
 from .routers.notify import router as notify_router
 from .routers.send import router as send_router
 from .routers.webhooks import router as webhooks_router
@@ -18,6 +19,7 @@ app = FastAPI(title="Switchboard", description="Multi-transport messaging hub")
 
 app.include_router(send_router, prefix="/api/v1")
 app.include_router(notify_router, prefix="/api/v1")
+app.include_router(messages_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 
 
